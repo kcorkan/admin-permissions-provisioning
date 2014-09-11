@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>admin-permissions-provisioning</title>
+    <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
+    <!--  Build Date: Thu Sep 11 2014 00:17:05 GMT-0600 (MDT) -->
+    
+    <script type="text/javascript">
+        var APP_BUILD_DATE = "Thu Sep 11 2014 00:17:05 GMT-0600 (MDT)";
+        var CHECKSUM = 13121219116;
+    </script>
+    
+    <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function() {
+             
+/*
+ */
+Ext.define('Rally.technicalservices.Logger',{
+    constructor: function(config){
+        Ext.apply(this,config);
+    },
+    log: function(args){
+        var timestamp = "[ " + Ext.util.Format.date(new Date(), "Y-m-d H:i:s.u") + " ]";
+        //var output_args = arguments;
+        //output_args.unshift( [ "[ " + timestamp + " ]" ] );
+        //output_args = Ext.Array.push(output_args,arguments);
+        
+        var output_args = [];
+        output_args = Ext.Array.push(output_args,[timestamp]);
+        output_args = Ext.Array.push(output_args, Ext.Array.slice(arguments,0));
+
+        window.console && console.log.apply(console,output_args);
+    }
+
+});
+
+Ext.define('Rally.technicalservices.util.PreferenceSaving',{
+    singleton: true,
+    logger: new Rally.technicalservices.Logger(),
+    PREF_CHUNK_LEN: 999,
+    saveAsJSON: function(name, object, workspace, appId, filterByUser, project){
+        /*
+         * This function does the following:
+         * 1- Cleans up any existing preferences with this name
+         * 2- Saves the object as JSON encoded preference.  
+         * If the JSON encoded string is larger than the limit, then
+         * the string is broken into pieces and saved.  
+         * 3- Saves meta data (.lastupdate)
+         * 
+         */
+        if (appId == undefined) {appId == null;}
+        if (project == undefined) {project == null;}
+        if (filterByUser == undefined) {filterByUser = false;}
+        
+        var pref_chunks = this._getJSONChunksFromObject(object);
+        var prefs = {};
+        Ext.each(pref_chunks, function(chunk, index){
+            var pref_name = this._getPrefName(name,index);
+            prefs[pref_name] = chunk;
+        }, this);
+        
+        //remove old prefs for name....
+        this._cleanPrefs(name, workspace, appId,filterByUser,project).then({
+            scope: this,
+            success: function(){
+                this.logger.log('preferences cleaned, now saving new ones');
+                this.save(prefs,workspace, appId,filterByUser,project);
+            }, 
+            failure: function(error){
+                this.logger.log('failed to clean out preferences: ', error);
+            }
+        });
+    },
+    _cleanPrefs: function(prefix,workspace, appId,filterByUser,project){
+        this.logger.log('_cleanPrefs');
+        var deferred = Ext.create('Deft.Deferred');
+        this._findPreferencesContainingKey(prefix, workspace).then({
+            scope: this,
+            success: function(records){
+                this.logger.log('Destroying ' + records.length + ' records.');
+                if (records.length > 0){
+                    this._destroyRecords(records).then({
+                        success: function(){
+                            deferred.resolve(); 
+                        }
+                    });
+                } else {
+                    deferred.resolve();
+                }
+                
+            },
+            failure: function(){
+                deferred.reject('Failed to find preferences with key ', prefix);
+            }
+        });
+        return deferred.promise;
+    },
+    _getPrefName: function(name,suffix){
+        return name.concat(".").concat(suffix.toString());
+    },
+    _getJSONChunksFromObject: function(object){
+        var pref = Ext.JSON.encode(object);
+        var pref_chunks = [];
+        
+        while (pref.length > this.PREF_CHUNK_LEN){
+            pref_chunks.push(pref.substr(0,this.PREF_CHUNK_LEN));
+            pref = pref.substr(this.PREF_CHUNK_LEN);
+        }
+        pref_chunks.push(pref);
+        console.log('pref_chunks',pref_chunks);
+        return pref_chunks;
+    },
+    _getObjectFromJSONChunks: function(json_chunks){
+        var json_string = '';
+        Ext.Array.each(json_chunks, function(chunk){
+            json_string += chunk;
+        });
+        var obj = Ext.JSON.decode(json_string);
+        return obj; 
+    },
+    _getPrefSuffix: function(name){
+        var suffix = name.substr(name.lastIndexOf('.')+1);
+        return suffix;  
+    },
+    _getPrefRoot: function(name){
+        var root = name.substr(0, name.lastIndexOf('.'));
+        return root;  
+    },
+    fetchFromJSON: function(name, workspace){
+        var deferred = Ext.create('Deft.Deferred');
+        //Returns an object retrieved from a JSON encoded preference.
+        var json_chunks = new Ext.util.HashMap();
+        var last_updated = new Ext.util.HashMap();
+        this._findPreferencesContainingKey(name, workspace).then({
+            scope:this,
+            success: function(data){
+                this.logger.log('fetchFromJSON Success.',data);
+                //var json_chunks = [];
+                //var last_updated = '';
+                Ext.each(data, function(rec){
+                    var key = this._getPrefRoot(rec.get('Name'));
+                    if (!json_chunks.containsKey(key)){
+                        json_chunks.add(key,[]);
+                        last_updated.add(key,rec.get('CreationDate'));
+                    }
+                    var idx =  this._getPrefSuffix(rec.get('Name'));
+                    var val = rec.get('Value');
+                    this.logger.log('key:',key,' idx:',idx);
+                    if (!isNaN(idx)){
+                        json_chunks.get(key)[idx] = val;
+                    } 
+                },this);
+                
+                console.log(json_chunks);
+                var objs = new Ext.util.HashMap();
+                json_chunks.each(function(key,value,length){
+                    objs.add(key,this._getObjectFromJSONChunks(value));
+                },this);
+               // var obj = this._getObjectFromJSONChunks(json_chunks);
+                console.log(objs);
+                deferred.resolve([objs,last_updated]);
+            },
+            failure: function(error) {
+                deferred.reject(error);
+            }
+        });
+        return deferred.promise; 
+    },
+    save: function(prefs, workspace, appId, filterByUser, project){
+        //Set defaults
+        if (appId == undefined) {appId == null;}
+        if (project == undefined) {project == null;}
+        if (filterByUser == undefined) {filterByUser = false;}
+        
+        var deferred = Ext.create('Deft.Deferred');
+        
+        Rally.data.PreferenceManager.update({
+            appID: appId,
+            project: project,
+            workspace: workspace,
+            filterByUser: filterByUser,
+            settings: prefs,
+            scope: this, 
+            success: function() {
+                this.logger.log('Successfully saved preference:',prefs);
+                deferred.resolve();
+            },
+            failure: function(){
+                this.logger.log('Failed to save preference',prefs);
+                deferred.reject();
+            }
+        });
+        return deferred.promise;
+    },
+    _findPreferencesContainingKey: function( key_part, workspace ) {
+        this.logger.log( "_findPreferencesContainingKey", key_part );
+        var deferred = Ext.create('Deft.Deferred');
+        Ext.create('Rally.data.wsapi.Store', {
+            model: 'Preference',
+            fetch: ['Name','Value','CreationDate'],
+            limit: 'Infinity',
+            context: {workspace: workspace},
+            sorters: [ { property: 'Name', direction: 'ASC' } ],
+            autoLoad: true,
+            filters: [ { property: 'Name', operator: 'contains', value: key_part } ],
+            listeners: {
+                scope: this, 
+                load: function(store,data,success) {
+                    this.logger.log('_findPreferencesContainingKey load', success);
+                    if (success) {
+                        deferred.resolve(data);
+                    } else {
+                        deferred.reject();
+                    }
+                }
+            }
+        });
+        return deferred.promise;
+    },
+    _destroyRecords: function(records){
+        var promises = [];
+        var deferred = Ext.create('Deft.Deferred');
+        Ext.each(records,function(rec){
+            promises.push(this._destroyRecord(rec));
+        }, this);
+        Deft.Promise.all(promises).then({
+            scope: this,
+            success: function(successes){
+                deferred.resolve(successes);
+                //TODO process to see if everything succeeeded
+            }
+        });
+        return deferred.promise;
+        
+    },
+    _destroyRecord: function(record){
+        var deferred = Ext.create('Deft.Deferred');
+        this.logger.log('destroying ' + record.get('Name'));
+        record.destroy({
+            callback: function(records, operation, success){
+                
+                deferred.resolve(success); 
+            }
+        });
+        return deferred.promise;
+    }
+   
+
+});
+/*
+ * A series of utilities to help construct trees
+ * with data gotten bottom or middle-up
+ * 
+ */
+ 
+Ext.define('Rally.technicalservices.util.TreeBuilding', {
+    singleton: true,
+    logger: new Rally.technicalservices.Logger(),
+    /*
+     * Given a hash of models (key = object id) that all know what
+     * their parent is (based on the "parent" field -- note lowercase)
+     * Return an array of models that are at the root level and
+     * have a "children" field (note lowercase)
+     * with appropriate items in an array 
+     */
+    constructRootItems:function(item_hash) {
+        var root_array = [];
+        Ext.Object.each(item_hash, function(oid,item){
+            if ( !item.get('children') ) { item.set('children',[]); }
+            var direct_parent = item.get('parent');
+            if (!direct_parent && !Ext.Array.contains(root_array,item)) {
+                root_array.push(item);
+            } else {
+                
+                var parent_oid =  direct_parent.ObjectID || direct_parent.get('ObjectID');
+                console.log('parent_oid',parent_oid);
+                if (!item_hash[parent_oid]) {
+                    this.logger.log("Saved parent missing: ", parent_oid);
+                    if ( !Ext.Array.contains(root_array,item) ) {
+                        root_array.push(item);
+                    }
+                } else {
+                    var parent = item_hash[parent_oid];
+                    console.log('children',parent.get('children'));
+                    if ( !parent.get('children') ) { parent.set('children',[]); }
+                    var kids = parent.get('children');
+                    kids.push(item);
+                    parent.set('children',kids);
+                }
+            }
+        },this);
+        return root_array;
+    },
+    /**
+     * Given an array of models, turn them into hashes
+     */
+    convertModelsToHashes: function(model_array) {
+        var hash_array = [];
+        Ext.Array.each(model_array,function(model){
+            if (this.isModel(model)) {
+                var model_as_hash = model.getData();
+                model_as_hash.expanded = false;
+                model_as_hash.leaf = false;
+                
+                // children & parent are fields that are not a 
+                // part of the model def'n so getData doesn't provide them
+                if ( model.get('children') ) {
+                    model_as_hash.children = this.convertModelsToHashes(model.get('children'));
+                }
+                if ( model.get('parent') ) {
+                    if ( this.isModel(model.get('parent') ) ) {
+                        model_as_hash.parent = model.get('parent').getData();
+                    } else {
+                        model_as_hash.parent = model.get('parent');
+                    }
+                }
+
+                if (!model_as_hash.children || model_as_hash.children.length === 0 ) {
+                    model_as_hash.leaf = true;
+                }
+                
+                hash_array.push(model_as_hash);
+            } else {
+                hash_array.push(model);
+            }
+        },this);
+        return hash_array;
+    },
+    isModel: function(model){
+        return model && ( model instanceof Ext.data.Model );
+    },
+    /*
+     * given an array of models, convert them into hashes only using select fields from the model
+     * 
+     */
+    convertModelsToHashesLimitFields: function(models, fields){
+        var hash_array = [];
+        Ext.Array.each(models,function(model){
+            if (this.isModel(model)) {
+                var model_as_hash = this._transformModelToHash(model, fields);
+                // children & parent are fields that are not a 
+                // part of the model def'n so getData doesn't provide them
+                if (model.get('ObjectID')){
+                    model_as_hash.id = model.get('ObjectID');
+                }
+                if ( model.get('children') ) {
+                    model_as_hash.children = this.convertModelsToHashesLimitFields(model.get('children'),fields);
+                }
+                if ( model.get('parent') ) {
+                    if ( this.isModel(model.get('parent') ) ) {
+                        model_as_hash.parent = this._transformModelToHash(model.get('parent'), fields); 
+                    } else {
+                        model_as_hash.parent = model.get('parent');
+                    }
+                }
+
+                if (!model_as_hash.children || model_as_hash.children.length === 0 ) {
+                    model_as_hash.leaf = true;
+                }
+                
+                hash_array.push(model_as_hash);
+            } else {
+                hash_array.push(model);
+            }
+        },this);
+        return hash_array;
+    },
+    _transformModelToHash: function(model, fields){
+        var model_as_hash = {};
+        model_as_hash.expanded = false;
+        model_as_hash.leaf = false;
+        Ext.each(fields, function(field){
+            model_as_hash[field] = model.get(field);
+        });
+        return model_as_hash; 
+    }
+});
+/**
+ * A link that pops up a version dialog box
+ */
+
+Ext.define('Rally.technicalservices.InfoLink',{
+    extend: 'Ext.Component',
+    alias: 'widget.tsinfolink',
+    
+    /**
+     * @cfg {String} informationHtml
+     * Additional text to be displayed on the popup dialog (for exmaple,
+     * to add a description of the app's use or functionality)
+     */
+    informationHtml: null,
+    
+    /**
+     * 
+     * cfg {String} title
+     * The title for the dialog box
+     */
+     title: "Build Information",
+    
+    renderTpl: "<div id='{id}-infolinkWrap' class='tsinfolink'>i</div>",
+
+    initComponent: function() {
+        this.callParent(arguments);
+       
+    },
+    
+    onRender: function() {
+        this.callParent(arguments);
+        this.mon(this.el,'click',this.onClick,this);
+    },
+    _generateChecksum: function(string){
+        var chk = 0x12345678,
+            i;
+        string = string.replace(/var CHECKSUM = .*;/,"");
+        string = string.replace(/\s/g,"");  //Remove all whitespace from the string.
+        
+        for (i = 0; i < string.length; i++) {
+            chk += (string.charCodeAt(i) * i);
+        }
+    
+        return chk;
+    },
+    _checkChecksum: function(container) {
+        var me = this;
+        Ext.Ajax.request({
+            url: document.URL,
+            params: {
+                id: 1
+            },
+            success: function (response) {
+                text = response.responseText;
+                if ( CHECKSUM ) {
+                    if ( CHECKSUM !== me._generateChecksum(text) ) {
+                        console.log("Checksums don't match!");
+                        if ( me.dialog ) {
+                            me.dialog.add({xtype:'container',html:'Checksums do not match'});
+                        }
+                    }
+                }
+            }
+        });
+    },
+    onClick: function(e) {
+        var me = this;
+        this._checkChecksum(this);
+        
+        var dialog_items = [];
+        
+        if ( this.informationHtml ) {
+            dialog_items.push({
+                xtype:'container',
+                html: this.informationHtml
+            });
+        }
+                
+        dialog_items.push({
+            xtype:'container',
+            html:"This app was created by the Rally Technical Services Team."
+        });
+        
+        if ( APP_BUILD_DATE ) {
+            dialog_items.push({
+                xtype:'container',
+                html:'Build date/time: ' + APP_BUILD_DATE
+            });
+        }
+        
+        if (this.dialog){this.dialog.destroy();}
+        this.dialog = Ext.create('Rally.ui.dialog.Dialog',{
+            defaults: { padding: 5, margin: 5 },
+            closable: true,
+            draggable: true,
+            title: me.title,
+            items: dialog_items
+        });
+        this.dialog.show();
+    }
+});
+
+Ext.define('Rally.technicalservices.TSRequestedPermission',{
+    extend: 'Ext.data.Model',
+    fields: [
+             {name: 'permission', type:'String', defaultValue: 'Editor'},
+             {name: 'userid', type: 'Integer'},
+             {name: 'username', type: 'String'},
+             {name: 'projectpath', type: 'String'},
+             {name: 'projectid', type: 'Integer'}
+             ],
+    getPrefKey: function(){
+        return Rally.technicalservices.TSRequestedPermission.getUserPrefKey(this.get('userid')) + 'project.' + this.get('projectid');
+    },
+    getPrefValue: function(){
+        return this.getData();
+    },
+    statics: {
+        PREF_PREFIX_USER: 'permissions.provisioning.user.',
+        getUserPrefKey: function(userid){
+            return this.PREF_PREFIX_USER + userid + '.';
+        },
+        isValidPrefKey: function(pref_key){
+            var regex = new RegExp(this.PREF_PREFIX_USER.replace('.','\.') + '([0-9]+)\.project\.([0-9]+)', 'i');
+            var pref_matches = pref_key.match(regex);
+            if (pref_matches){
+                //make sure ids > 0 
+                if (pref_matches[1] > 0 && pref_matches[2]>0){
+                    return true;
+                };
+            }
+            return false;
+        }
+        
+    }
+});
+Ext.define('CustomApp', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+    logger: new Rally.technicalservices.Logger(),
+    PREF_NAME: 'permissions.provisioning.projecttree',
+    USER_PREF_NAME: 'permissions.provisioning.user',
+    items: [
+        {xtype:'container',itemId:'message_box',tpl:'Hello, <tpl>{_refObjectName}</tpl>'},
+        {xtype:'container',itemId:'display_box'},
+        {xtype:'tsinfolink'}
+    ],
+    launch: function() {
+        this.down('#display_box').add({
+            itemId: 'button_build_projects',
+            xtype: 'button',
+            text: 'Refresh Projects',
+            scope: this,
+            handler: this._refreshProjectTreePreferences
+        });
+        
+        this.down('#display_box').add(this._createPendingPermissionsGrid());
+    },
+    _getRequestedPermissionColumns: function(){
+        this.logger.log('_getRequestedPermissionColumns');
+       
+        var columns = [{ //username
+                text: 'UserName',
+                dataIndex: 'username',
+                flex: 1,
+                iconCls: '',
+                renderer: function(value, metaData, record){
+                    if (record.get('leaf') == true){
+                        return record.get('projectpath');  //TODO, add a link to the project page 
+                    } 
+                    return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
+                } 
+            },{//project 
+                text: 'Project Path',
+                dataIndex: 'projectpath',
+            },{//Permission
+                dataIndex: 'permission',
+                text: 'Requested Permission',
+            },{ //Action Column (dismiss)
+                        xtype:'actioncolumn',
+                        width:50,
+                        icon: '/slm/images/icon_delete.gif',
+                        tooltip: 'dismiss',
+                        handler: this._dismissRequest,
+            }];
+        return columns;        
+    },
+    _dismissRequest: function(tree, row_index, col_index){
+        alert('dismiss request');
+        console.log('_dismissRequest' ,tree,row_index,col_index);
+        //remove from tree, store and preferences 
+        //Rally.technicalservices.util.PreferenceSaving._cleanPrefs(pref_key, this.getContext().getWorkspace());
+        
+    },
+       _createPendingPermissionsGrid: function(){
+        var store = this._createPendingPermissionsStore().then({
+            scope: this,
+            success: function(store){
+                console.log('store:', store);
+                this.down('#display_box').add({
+                    xtype:'gridpanel',
+                    itemId: 'requested-permissions-tree',
+                    store: store,
+                    columnCfgs: this._getRequestedPermissionColumns()
+                });
+            },
+            failure: function(error){
+                alert(error);
+            }
+        });
+    },
+    _createPendingPermissionsStore: function(){
+        var workspace = this.getContext().getWorkspace();
+        var deferred = Ext.create('Deft.Deferred');
+        
+        Rally.technicalservices.util.PreferenceSaving.fetchFromJSON(Rally.technicalservices.TSRequestedPermission.PREF_PREFIX_USER,workspace).then({
+            scope: this,
+            success: function(obj){
+                var requests = obj[0].getKeys();
+                var data = [];
+                Ext.each(requests, function(req_key){
+                    var req = obj[0].get(req_key);
+                    data.push(req);
+                }, this);
+                var store = Ext.create('Rally.technicalservices.TSRequestedPermission');
+                store.setData(data);
+                deferred.resolve(store);
+            
+            },
+            failure: function(error){
+                deferred.reject(error);
+                console.log(error);
+            }
+        });
+        return deferred.promise; 
+    },
+    _refreshProjectTreePreferences: function(){
+        var me = this; 
+        this.down('#button_build_projects').setDisabled(true);
+        var workspace = this.getContext().getWorkspace();
+        this._fetchProjectTree().then({
+            scope: this,
+            success: function(tree){
+                console.log(tree);
+                Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this.PREF_NAME,tree,workspace);
+                Rally.ui.notify.Notifier.show({message: 'Project Tree Saved.'});
+            },
+            failure: function(error){
+                Rally.ui.notify.Notifier.showError({message: error});
+           }
+        }).always(function(){
+            me.down('#button_build_projects').setDisabled(false);
+        });
+         
+    },
+    _fetchProjectTree: function(){
+        var deferred = Ext.create('Deft.Deferred');
+        
+        var store = Ext.create('Rally.data.wsapi.Store',{
+            model: 'Project',
+            fetch: ['Name','ObjectID','Parent','Children','Owner','User.Email'],
+            limit: Infinity,
+            autoLoad: true,
+            context: {project: null},
+            listeners: {
+                scope: this, 
+                load: function(store, records, successful){
+                    console.log('load',successful);
+                    if (successful){
+                        
+                        var fields = ['Name','Owner'];
+                        var flattened_project_hash = this._createProjectModelHash(records);  
+                        var project_tree = Rally.technicalservices.util.TreeBuilding.constructRootItems(flattened_project_hash);
+                        var project_tree_hash = Rally.technicalservices.util.TreeBuilding.convertModelsToHashesLimitFields(project_tree, fields);
+                        deferred.resolve(project_tree_hash);
+                    } else {
+                        deferred.reject('Error loading projects');
+                    }
+
+                }
+            }
+       });
+       return deferred.promise;
+    },
+    _createProjectModelHash: function(records){
+        var project_hash = {};
+        Ext.Array.each(records, function(rec){
+            var parent = rec.get('Parent');
+            rec.set('parent',parent);
+            project_hash[rec.get('ObjectID')] = rec;
+            console.log(rec);
+            alert('x');
+            //var owner = rec.get('Owner.Email');
+            //rec.set('Owner',owner);
+         }, this);
+        console.log(project_hash);
+        return project_hash;
+    }    
+    
+
+});
+            
+               Rally.launchApp('CustomApp', {
+                   name: 'admin-permissions-provisioning'
+               });
+        });
+    </script>
+    
+    <style type="text/css">
+
+.app {
+}
+.tsinfolink {
+    position:absolute;
+    right:0px;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    text-align: center;
+    color: white;
+    background: #C0C0C0;
+    border-style: solid;
+    border-width: 1px;
+    margin-top: 25px;
+    margin-right: 5px;
+    cursor: pointer;
+}
+    </style>
+
+</head>
+<body></body>
+</html>
