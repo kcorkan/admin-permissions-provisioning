@@ -121,7 +121,7 @@ Ext.define('CustomApp', {
         
         var store = Ext.create('Rally.data.wsapi.Store',{
             model: 'Project',
-            fetch: ['Name','ObjectID','Parent','Children','Owner','User.Email'],
+            fetch: ['Name','ObjectID','Parent','Children','Owner','FirstName','LastName','EmailAddress'],
             limit: Infinity,
             autoLoad: true,
             context: {project: null},
@@ -151,9 +151,19 @@ Ext.define('CustomApp', {
             var parent = rec.get('Parent');
             rec.set('parent',parent);
             project_hash[rec.get('ObjectID')] = rec;
-            //TODO : deal with getting owner
-            //var owner = rec.get('Owner.Email');
-            //rec.set('Owner',owner);
+            console.log(rec);
+            var owner_obj = rec.get('Owner');
+            var owner = '';
+            if (owner_obj){
+                if (owner_obj.FirstName){
+                    owner += owner_obj.FirstName + ' ';
+                }
+                if (owner_obj.LastName){
+                    owner += owner_obj.LastName + ' ';
+                }
+                owner += owner_obj.EmailAddress;
+            }
+            rec.set('Owner',owner);
          }, this);
         console.log(project_hash);
         return project_hash;

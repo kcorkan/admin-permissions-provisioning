@@ -3,11 +3,11 @@
 <head>
     <title>admin-permissions-provisioning</title>
     <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Thu Sep 11 2014 00:17:05 GMT-0600 (MDT) -->
+    <!--  Build Date: Thu Sep 11 2014 11:07:15 GMT-0600 (MDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Thu Sep 11 2014 00:17:05 GMT-0600 (MDT)";
-        var CHECKSUM = 13121219116;
+        var APP_BUILD_DATE = "Thu Sep 11 2014 11:07:15 GMT-0600 (MDT)";
+        var CHECKSUM = 13077959380;
     </script>
     
     <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
@@ -530,10 +530,11 @@ Ext.define('CustomApp', {
             xtype: 'button',
             text: 'Refresh Projects',
             scope: this,
+            margin: 10,
             handler: this._refreshProjectTreePreferences
         });
         
-        this.down('#display_box').add(this._createPendingPermissionsGrid());
+        this._createPendingPermissionsGrid();
     },
     _getRequestedPermissionColumns: function(){
         this.logger.log('_getRequestedPermissionColumns');
@@ -541,17 +542,13 @@ Ext.define('CustomApp', {
         var columns = [{ //username
                 text: 'UserName',
                 dataIndex: 'username',
-                flex: 1,
-                iconCls: '',
                 renderer: function(value, metaData, record){
-                    if (record.get('leaf') == true){
-                        return record.get('projectpath');  //TODO, add a link to the project page 
-                    } 
                     return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
                 } 
             },{//project 
                 text: 'Project Path',
                 dataIndex: 'projectpath',
+                flex: 1
             },{//Permission
                 dataIndex: 'permission',
                 text: 'Requested Permission',
@@ -566,22 +563,21 @@ Ext.define('CustomApp', {
     },
     _dismissRequest: function(tree, row_index, col_index){
         alert('dismiss request');
-        console.log('_dismissRequest' ,tree,row_index,col_index);
-        //remove from tree, store and preferences 
-        //Rally.technicalservices.util.PreferenceSaving._cleanPrefs(pref_key, this.getContext().getWorkspace());
-        
+        //delete request
+        //remove from grid
     },
        _createPendingPermissionsGrid: function(){
-        var store = this._createPendingPermissionsStore().then({
+        this._createPendingPermissionsStore().then({
             scope: this,
             success: function(store){
                 console.log('store:', store);
                 this.down('#display_box').add({
                     xtype:'gridpanel',
-                    itemId: 'requested-permissions-tree',
+                    itemId: 'requested-permissions-grid',
                     store: store,
-                    columnCfgs: this._getRequestedPermissionColumns()
+                    columns: this._getRequestedPermissionColumns()
                 });
+                console.log('here');
             },
             failure: function(error){
                 alert(error);
@@ -598,11 +594,14 @@ Ext.define('CustomApp', {
                 var requests = obj[0].getKeys();
                 var data = [];
                 Ext.each(requests, function(req_key){
-                    var req = obj[0].get(req_key);
-                    data.push(req);
+                   if (Rally.technicalservices.TSRequestedPermission.isValidPrefKey(req_key)){
+                       data.push(obj[0].get(req_key));
+                   }
                 }, this);
-                var store = Ext.create('Rally.technicalservices.TSRequestedPermission');
-                store.setData(data);
+                var store = Ext.create('Ext.data.Store',{
+                    model: 'Rally.technicalservices.TSRequestedPermission',
+                    data: data
+                });
                 deferred.resolve(store);
             
             },
@@ -637,7 +636,7 @@ Ext.define('CustomApp', {
         
         var store = Ext.create('Rally.data.wsapi.Store',{
             model: 'Project',
-            fetch: ['Name','ObjectID','Parent','Children','Owner','User.Email'],
+            fetch: ['Name','ObjectID','Parent','Children','Owner','FirstName','LastName','EmailAddress'],
             limit: Infinity,
             autoLoad: true,
             context: {project: null},
@@ -668,9 +667,18 @@ Ext.define('CustomApp', {
             rec.set('parent',parent);
             project_hash[rec.get('ObjectID')] = rec;
             console.log(rec);
-            alert('x');
-            //var owner = rec.get('Owner.Email');
-            //rec.set('Owner',owner);
+            var owner_obj = rec.get('Owner');
+            var owner = '';
+            if (owner_obj){
+                if (owner_obj.FirstName){
+                    owner += owner_obj.FirstName + ' ';
+                }
+                if (owner_obj.LastName){
+                    owner += owner_obj.LastName + ' ';
+                }
+                owner += owner_obj.EmailAddress;
+            }
+            rec.set('Owner',owner);
          }, this);
         console.log(project_hash);
         return project_hash;
