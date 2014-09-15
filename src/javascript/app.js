@@ -5,8 +5,8 @@ Ext.define('CustomApp', {
     PREF_NAME: 'permissions.provisioning.projecttree',
     USER_PREF_NAME: 'permissions.provisioning.user',
     items: [
-        {xtype:'container',itemId:'message_box',tpl:'Hello, <tpl>{_refObjectName}</tpl>'},
-        {xtype:'container',itemId:'display_box'},
+        {xtype:'container',itemId:'display_box', layout: 'hbox', padding: 25},
+        {xtype:'container',itemId: 'requested_permissions_box'},
         {xtype:'tsinfolink'}
     ],
     launch: function() {
@@ -19,48 +19,74 @@ Ext.define('CustomApp', {
             handler: this._refreshProjectTreePreferences
         });
         
+        this._updateProjectTreeStatus();
+
         this._createPendingPermissionsGrid();
     },
     _getRequestedPermissionColumns: function(){
         this.logger.log('_getRequestedPermissionColumns');
        
         var columns = [{ //username
-                text: 'UserName',
-                dataIndex: 'username',
-                renderer: function(value, metaData, record){
-                    return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
-                } 
-            },{//project 
-                text: 'Project Path',
+//                text: 'UserName',
+//                dataIndex: 'username',
+//                renderer: function(value, metaData, record){
+//                    return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
+//                } 
+//            },{//project 
+//                text: 'Project Path',
                 dataIndex: 'projectpath',
                 flex: 1
             },{//Permission
                 dataIndex: 'permission',
                 text: 'Requested Permission',
             },{ //Action Column (dismiss)
+                        scope: this,
                         xtype:'actioncolumn',
-                        width:50,
-                        icon: '/slm/images/icon_delete.gif',
-                        tooltip: 'dismiss',
-                        handler: this._dismissRequest,
+                        items: [{
+                            icon: '/slm/images/icon_delete.gif',
+                            tooltip: 'Dismiss',
+                            scope: this,
+                            handler: this._dismissRequest
+                        }]
             }];
         return columns;        
     },
-    _dismissRequest: function(tree, row_index, col_index){
+    _dismissRequest: function(grid, row_index, col_index){
         alert('dismiss request');
-        //delete request
-        //remove from grid
+        var perm = grid.getStore().getAt(row_index);
+        this.logger.log('_dismissRequest:', perm, this);
+        Rally.technicalservices.util.PreferenceSaving._cleanPrefs(perm.getPrefKey(),this.getContext().getWorkspace()).then({
+            scope:this,
+            success: function(){
+                this._createPendingPermissionsGrid();
+            },
+            failure: function(error){
+                alert(error);
+            }
+        });
     },
        _createPendingPermissionsGrid: function(){
-        this._createPendingPermissionsStore().then({
+           if (this.down('#requested-permissions-grid')){
+               this.down('#requested-permissions-grid').destroy();
+           }
+           
+           this._createPendingPermissionsStore().then({
             scope: this,
             success: function(store){
                 console.log('store:', store);
-                this.down('#display_box').add({
-                    xtype:'gridpanel',
+                this.down('#requested_permissions_box').add({
+                    xtype:'rallygrid',
                     itemId: 'requested-permissions-grid',
                     store: store,
-                    columns: this._getRequestedPermissionColumns()
+                    scope: this,
+                    columnCfgs: this._getRequestedPermissionColumns(),
+                    showPagingToolbar: false,
+                    features: [{
+                        ftype: 'grouping',
+                        groupHeaderTpl: '{name} ({rows.length})'
+                    }],
+                    width: 800
+                    
                 });
                 console.log('here');
             },
@@ -83,9 +109,18 @@ Ext.define('CustomApp', {
                        data.push(obj[0].get(req_key));
                    }
                 }, this);
-                var store = Ext.create('Ext.data.Store',{
+
+                var store = Ext.create('Rally.data.custom.Store',{
                     model: 'Rally.technicalservices.TSRequestedPermission',
-                    data: data
+                    data: data,
+                    limit: 'infinity',
+                    fetch: ['username','userid','projectpath','permission'],
+                    groupField: 'username',
+                    groupDir: 'ASC',
+                    getGroupString: function(record) {
+                        var link = '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + record.get('username') + '</a>'
+                        return link;
+                    }
                 });
                 deferred.resolve(store);
             
@@ -97,28 +132,38 @@ Ext.define('CustomApp', {
         });
         return deferred.promise; 
     },
+
     _refreshProjectTreePreferences: function(){
         var me = this; 
         this.down('#button_build_projects').setDisabled(true);
+        this.down('#display_box').setLoading({msg: 'Generating Project tree...'})
         var workspace = this.getContext().getWorkspace();
         this._fetchProjectTree().then({
             scope: this,
             success: function(tree){
                 console.log(tree);
-                Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this.PREF_NAME,tree,workspace);
-                Rally.ui.notify.Notifier.show({message: 'Project Tree Saved.'});
+                Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this.PREF_NAME,tree,workspace).then({
+                    scope: this,
+                    success: function(){
+                        Rally.ui.notify.Notifier.show({message: 'Project Tree Saved.'});
+                    },
+                    failure: function(error){
+                        Rally.ui.notify.Notifier.showError({message: error});
+                    }
+                });
             },
             failure: function(error){
                 Rally.ui.notify.Notifier.showError({message: error});
            }
         }).always(function(){
+            me.down('#display_box').setLoading(false);
+            me._updateProjectTreeStatus();
             me.down('#button_build_projects').setDisabled(false);
         });
          
     },
     _fetchProjectTree: function(){
         var deferred = Ext.create('Deft.Deferred');
-        
         var store = Ext.create('Rally.data.wsapi.Store',{
             model: 'Project',
             fetch: ['Name','ObjectID','Parent','Children','Owner','FirstName','LastName','EmailAddress'],
@@ -128,9 +173,8 @@ Ext.define('CustomApp', {
             listeners: {
                 scope: this, 
                 load: function(store, records, successful){
-                    console.log('load',successful);
+                    this.logger.log('_fetchProjectTree success', successful);
                     if (successful){
-                        
                         var fields = ['Name','Owner'];
                         var flattened_project_hash = this._createProjectModelHash(records);  
                         var project_tree = Rally.technicalservices.util.TreeBuilding.constructRootItems(flattened_project_hash);
@@ -139,7 +183,6 @@ Ext.define('CustomApp', {
                     } else {
                         deferred.reject('Error loading projects');
                     }
-
                 }
             }
        });
@@ -151,7 +194,6 @@ Ext.define('CustomApp', {
             var parent = rec.get('Parent');
             rec.set('parent',parent);
             project_hash[rec.get('ObjectID')] = rec;
-            console.log(rec);
             var owner_obj = rec.get('Owner');
             var owner = '';
             if (owner_obj){
@@ -165,9 +207,46 @@ Ext.define('CustomApp', {
             }
             rec.set('Owner',owner);
          }, this);
-        console.log(project_hash);
         return project_hash;
-    }    
-    
-
+    },  
+    _updateProjectTreeStatus: function(last_updated){
+        var html ='';
+        if (this.down('#text-area-project-tree-status')){
+            this.down('#text-area-project-tree-status').destroy();
+        }
+        var status =  this.down('#display_box').add({
+            itemId: 'text-area-project-tree-status',
+            xtype: 'container',
+            html: html
+        });
+        var me = this; 
+        if (last_updated){
+            html = 'The project tree was last updated on ' + last_updated;
+            status.update(html);
+        } else {
+            this.down('#display_box').setLoading(true);
+            Rally.technicalservices.util.PreferenceSaving.findKeysAndCreateDate(this.PREF_NAME, this.getContext().getWorkspace()).then({
+                scope: this,
+                success: function(key_hash_map){
+                    if (Object.keys(key_hash_map).length>0){
+                        last_updated = _.values(key_hash_map)[0];
+                        html = 'The project tree was last updated on ' + last_updated;
+                    } else {
+                        html = 'The project tree has not yet been created.  Please click <b>Refresh Projects</b> to build the project tree for the user permissions provisioning app.';
+                        var cls = 'cls-error';
+                        status.addCls(cls); 
+                   }
+                },
+                failure: function(error){
+                    this.logger.log('findKeysAndCreateDate',error);
+                    html = 'Error creating the project tree structure: ' + error;
+                    var cls = 'cls-error';
+                    status.addCls(cls); 
+                }
+            }).always(function(){
+                status.update(html);
+                me.down('#display_box').setLoading(false);
+            });
+        }
+    }
 });

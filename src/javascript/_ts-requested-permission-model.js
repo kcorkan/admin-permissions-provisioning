@@ -1,11 +1,11 @@
 Ext.define('Rally.technicalservices.TSRequestedPermission',{
     extend: 'Ext.data.Model',
     fields: [
-             {name: 'permission', type:'String', defaultValue: 'Editor'},
-             {name: 'userid', type: 'Integer'},
-             {name: 'username', type: 'String'},
-             {name: 'projectpath', type: 'String'},
-             {name: 'projectid', type: 'Integer'}
+             {name: 'permission', type:'string', defaultValue: 'Editor'},
+             {name: 'userid', type: 'int'},
+             {name: 'username', type: 'string'},
+             {name: 'projectpath', type: 'string'},
+             {name: 'projectid', type: 'int'}
              ],
     getPrefKey: function(){
         return Rally.technicalservices.TSRequestedPermission.getUserPrefKey(this.get('userid')) + 'project.' + this.get('projectid');

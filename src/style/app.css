@@ -15,3 +15,14 @@
     margin-right: 5px;
     cursor: pointer;
 }
+.cls-info{
+	color: #00FF00;
+	text-align: center;
+	vertical-align: center;
+}
+.cls-warning{
+	color: #000000'
+}
+.cls-error{
+	color: #FF0000
+}
