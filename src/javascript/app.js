@@ -27,13 +27,13 @@ Ext.define('CustomApp', {
         this.logger.log('_getRequestedPermissionColumns');
        
         var columns = [{ //username
-//                text: 'UserName',
-//                dataIndex: 'username',
-//                renderer: function(value, metaData, record){
-//                    return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
-//                } 
-//            },{//project 
-//                text: 'Project Path',
+                text: 'UserName',
+                dataIndex: 'username',
+                renderer: function(value, metaData, record){
+                    return '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + value + '</a>'; 
+                } 
+            },{//project 
+                text: 'Project Path',
                 dataIndex: 'projectpath',
                 flex: 1
             },{//Permission
@@ -47,12 +47,11 @@ Ext.define('CustomApp', {
                             tooltip: 'Dismiss',
                             scope: this,
                             handler: this._dismissRequest
-                        }]
+                        }],
             }];
         return columns;        
     },
     _dismissRequest: function(grid, row_index, col_index){
-        alert('dismiss request');
         var perm = grid.getStore().getAt(row_index);
         this.logger.log('_dismissRequest:', perm, this);
         Rally.technicalservices.util.PreferenceSaving._cleanPrefs(perm.getPrefKey(),this.getContext().getWorkspace()).then({
@@ -73,7 +72,6 @@ Ext.define('CustomApp', {
            this._createPendingPermissionsStore().then({
             scope: this,
             success: function(store){
-                console.log('store:', store);
                 this.down('#requested_permissions_box').add({
                     xtype:'rallygrid',
                     itemId: 'requested-permissions-grid',
@@ -81,14 +79,13 @@ Ext.define('CustomApp', {
                     scope: this,
                     columnCfgs: this._getRequestedPermissionColumns(),
                     showPagingToolbar: false,
-                    features: [{
-                        ftype: 'grouping',
-                        groupHeaderTpl: '{name} ({rows.length})'
-                    }],
+//                    features: [{
+//                        ftype: 'grouping',
+//                        groupHeaderTpl: '{name} ({rows.length})'
+//                    }],
                     width: 800
                     
                 });
-                console.log('here');
             },
             failure: function(error){
                 alert(error);
@@ -115,19 +112,18 @@ Ext.define('CustomApp', {
                     data: data,
                     limit: 'infinity',
                     fetch: ['username','userid','projectpath','permission'],
-                    groupField: 'username',
-                    groupDir: 'ASC',
-                    getGroupString: function(record) {
-                        var link = '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + record.get('username') + '</a>'
-                        return link;
-                    }
+//                    groupField: 'username',
+//                    groupDir: 'ASC',
+//                    getGroupString: function(record) {
+//                        var link = '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + record.get('username') + '</a>'
+//                        return link;
+//                    }
                 });
                 deferred.resolve(store);
             
             },
             failure: function(error){
                 deferred.reject(error);
-                console.log(error);
             }
         });
         return deferred.promise; 
@@ -141,7 +137,6 @@ Ext.define('CustomApp', {
         this._fetchProjectTree().then({
             scope: this,
             success: function(tree){
-                console.log(tree);
                 Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this.PREF_NAME,tree,workspace).then({
                     scope: this,
                     success: function(){

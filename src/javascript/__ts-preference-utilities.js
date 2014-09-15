@@ -1,7 +1,7 @@
 Ext.define('Rally.technicalservices.util.PreferenceSaving',{
     singleton: true,
     logger: new Rally.technicalservices.Logger(),
-    PREF_CHUNK_LEN: 1024,
+    PREF_CHUNK_LEN: 30000,
     findKeysAndCreateDate: function(prefix, workspace){
         this.logger.log( "findKeysAndLastModified", prefix );
         var deferred = Ext.create('Deft.Deferred');
