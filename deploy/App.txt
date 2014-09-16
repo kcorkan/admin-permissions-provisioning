@@ -3,11 +3,11 @@
 <head>
     <title>admin-permissions-provisioning</title>
     <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Tue Sep 16 2014 01:04:27 GMT-0600 (MDT) -->
+    <!--  Build Date: Tue Sep 16 2014 02:09:42 GMT-0600 (MDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Tue Sep 16 2014 01:04:27 GMT-0600 (MDT)";
-        var CHECKSUM = 19058132457;
+        var APP_BUILD_DATE = "Tue Sep 16 2014 02:09:42 GMT-0600 (MDT)";
+        var CHECKSUM = 18978580654;
     </script>
     
     <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
@@ -716,7 +716,7 @@ Ext.define('CustomApp', {
         }).always(function(){
             me.down('#display_box').setLoading(false);
             me.down('#button_build_projects').setDisabled(false);
-            me._updateProjectTreeStatus();
+            me._updateProjectTreeStatus(true);
         });
          
     },
@@ -767,7 +767,7 @@ Ext.define('CustomApp', {
          }, this);
         return project_hash;
     },  
-    _updateProjectTreeStatus: function(last_updated){
+    _updateProjectTreeStatus: function(just_updated){
         var html ='';
         if (this.down('#text-area-project-tree-status')){
             this.down('#text-area-project-tree-status').destroy();
@@ -778,8 +778,8 @@ Ext.define('CustomApp', {
             html: html
         });
         var me = this; 
-        if (last_updated){
-            html = 'The project tree was last updated on ' + last_updated;
+        if (just_updated){
+            html = '';
             status.update(html);
         } else {
             this.down('#display_box').setLoading(true);

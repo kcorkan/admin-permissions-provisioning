@@ -159,7 +159,7 @@ Ext.define('CustomApp', {
         }).always(function(){
             me.down('#display_box').setLoading(false);
             me.down('#button_build_projects').setDisabled(false);
-            me._updateProjectTreeStatus();
+            me._updateProjectTreeStatus(true);
         });
          
     },
@@ -210,7 +210,7 @@ Ext.define('CustomApp', {
          }, this);
         return project_hash;
     },  
-    _updateProjectTreeStatus: function(last_updated){
+    _updateProjectTreeStatus: function(just_updated){
         var html ='';
         if (this.down('#text-area-project-tree-status')){
             this.down('#text-area-project-tree-status').destroy();
@@ -221,8 +221,8 @@ Ext.define('CustomApp', {
             html: html
         });
         var me = this; 
-        if (last_updated){
-            html = 'The project tree was last updated on ' + last_updated;
+        if (just_updated){
+            html = '';
             status.update(html);
         } else {
             this.down('#display_box').setLoading(true);
