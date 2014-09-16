@@ -23,6 +23,14 @@ Ext.define('CustomApp', {
 
         this._createPendingPermissionsGrid();
     },
+    _getPrefName: function(){
+        var wksp_id = this.getContext().getWorkspace().ObjectID;
+        return wksp_id.toString() + this.PREF_NAME;  
+    },
+    _getUserPrefName: function(){
+        var wksp_id = this.getContext().getWorkspace().ObjectID;
+        return wksp_id.toString() + this.USER_PREF_NAME;  
+    },
     _getRequestedPermissionColumns: function(){
         this.logger.log('_getRequestedPermissionColumns');
        
@@ -36,6 +44,13 @@ Ext.define('CustomApp', {
                 text: 'Project Path',
                 dataIndex: 'projectpath',
                 flex: 1
+            },{
+              text: 'Team Member?',
+              dataIndex: 'team_member',
+              renderer: function(v){
+                  if (v) {return 'Yes';}
+                  return 'No';
+              }
             },{//Permission
                 dataIndex: 'permission',
                 text: 'Requested Permission',
@@ -51,10 +66,12 @@ Ext.define('CustomApp', {
             }];
         return columns;        
     },
+    
     _dismissRequest: function(grid, row_index, col_index){
         var perm = grid.getStore().getAt(row_index);
+        var wksp_id = this.getContext().getWorkspace().ObjectID;
         this.logger.log('_dismissRequest:', perm, this);
-        Rally.technicalservices.util.PreferenceSaving._cleanPrefs(perm.getPrefKey(),this.getContext().getWorkspace()).then({
+        Rally.technicalservices.util.PreferenceSaving._cleanPrefs(perm.getPrefKey(wksp_id),this.getContext().getWorkspaceRef()).then({
             scope:this,
             success: function(){
                 this._createPendingPermissionsGrid();
@@ -75,14 +92,11 @@ Ext.define('CustomApp', {
                 this.down('#requested_permissions_box').add({
                     xtype:'rallygrid',
                     itemId: 'requested-permissions-grid',
+                    title: 'Pending User Project Permission Requests',
                     store: store,
                     scope: this,
                     columnCfgs: this._getRequestedPermissionColumns(),
                     showPagingToolbar: false,
-//                    features: [{
-//                        ftype: 'grouping',
-//                        groupHeaderTpl: '{name} ({rows.length})'
-//                    }],
                     width: 800
                     
                 });
@@ -93,10 +107,11 @@ Ext.define('CustomApp', {
         });
     },
     _createPendingPermissionsStore: function(){
-        var workspace = this.getContext().getWorkspace();
+        var workspace = this.getContext().getWorkspaceRef();
+        var wksp_id = this.getContext().getWorkspace().ObjectID;
         var deferred = Ext.create('Deft.Deferred');
         
-        Rally.technicalservices.util.PreferenceSaving.fetchFromJSON(Rally.technicalservices.TSRequestedPermission.PREF_PREFIX_USER,workspace).then({
+        Rally.technicalservices.util.PreferenceSaving.fetchFromJSON(Rally.technicalservices.TSRequestedPermission.getPrefPrefixUser(wksp_id),workspace).then({
             scope: this,
             success: function(obj){
                 var requests = obj[0].getKeys();
@@ -110,17 +125,9 @@ Ext.define('CustomApp', {
                 var store = Ext.create('Rally.data.custom.Store',{
                     model: 'Rally.technicalservices.TSRequestedPermission',
                     data: data,
-                    limit: 'infinity',
-                    fetch: ['username','userid','projectpath','permission'],
-//                    groupField: 'username',
-//                    groupDir: 'ASC',
-//                    getGroupString: function(record) {
-//                        var link = '<a href="/slm/user/edit.sp?oid=' + record.get('userid') + '" target="_blank">' + record.get('username') + '</a>'
-//                        return link;
-//                    }
+                    limit: 'infinity'
                 });
                 deferred.resolve(store);
-            
             },
             failure: function(error){
                 deferred.reject(error);
@@ -128,16 +135,15 @@ Ext.define('CustomApp', {
         });
         return deferred.promise; 
     },
-
     _refreshProjectTreePreferences: function(){
         var me = this; 
         this.down('#button_build_projects').setDisabled(true);
         this.down('#display_box').setLoading({msg: 'Generating Project tree...'})
-        var workspace = this.getContext().getWorkspace();
+        var workspace = this.getContext().getWorkspaceRef();
         this._fetchProjectTree().then({
             scope: this,
             success: function(tree){
-                Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this.PREF_NAME,tree,workspace).then({
+                Rally.technicalservices.util.PreferenceSaving.saveAsJSON(this._getPrefName(),tree,workspace).then({
                     scope: this,
                     success: function(){
                         Rally.ui.notify.Notifier.show({message: 'Project Tree Saved.'});
@@ -152,8 +158,8 @@ Ext.define('CustomApp', {
            }
         }).always(function(){
             me.down('#display_box').setLoading(false);
-            me._updateProjectTreeStatus();
             me.down('#button_build_projects').setDisabled(false);
+            me._updateProjectTreeStatus();
         });
          
     },
@@ -220,7 +226,7 @@ Ext.define('CustomApp', {
             status.update(html);
         } else {
             this.down('#display_box').setLoading(true);
-            Rally.technicalservices.util.PreferenceSaving.findKeysAndCreateDate(this.PREF_NAME, this.getContext().getWorkspace()).then({
+            Rally.technicalservices.util.PreferenceSaving.findKeysAndCreateDate(this._getPrefName(), this.getContext().getWorkspaceRef()).then({
                 scope: this,
                 success: function(key_hash_map){
                     if (Object.keys(key_hash_map).length>0){
