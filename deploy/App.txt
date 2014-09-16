@@ -3,11 +3,11 @@
 <head>
     <title>admin-permissions-provisioning</title>
     <!--  (c) 2014 Rally Software Development Corp.  All Rights Reserved. -->
-    <!--  Build Date: Tue Sep 16 2014 00:24:11 GMT-0600 (MDT) -->
+    <!--  Build Date: Tue Sep 16 2014 01:04:27 GMT-0600 (MDT) -->
     
     <script type="text/javascript">
-        var APP_BUILD_DATE = "Tue Sep 16 2014 00:24:11 GMT-0600 (MDT)";
-        var CHECKSUM = 19305465877;
+        var APP_BUILD_DATE = "Tue Sep 16 2014 01:04:27 GMT-0600 (MDT)";
+        var CHECKSUM = 19058132457;
     </script>
     
     <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
@@ -150,7 +150,6 @@ Ext.define('Rally.technicalservices.util.PreferenceSaving',{
             pref = pref.substr(this.PREF_CHUNK_LEN);
         }
         pref_chunks.push(pref);
-        console.log('pref_chunks',pref_chunks);
         return pref_chunks;
     },
     _getObjectFromJSONChunks: function(json_chunks){
@@ -194,13 +193,11 @@ Ext.define('Rally.technicalservices.util.PreferenceSaving',{
                     } 
                 },this);
                 
-                console.log(json_chunks);
                 var objs = new Ext.util.HashMap();
                 json_chunks.each(function(key,value,length){
                     objs.add(key,this._getObjectFromJSONChunks(value));
                 },this);
-               // var obj = this._getObjectFromJSONChunks(json_chunks);
-                console.log(objs);
+
                 deferred.resolve([objs,last_updated]);
             },
             failure: function(error) {
@@ -543,7 +540,7 @@ Ext.define('Rally.technicalservices.TSRequestedPermission',{
             return wksp_id.toString() + PREF_PREFIX_USER;
         },
         getUserPrefKey: function(wksp_id, userid){
-            return wksp_id + this.PREF_PREFIX_USER + userid + '.';
+            return this.getPrefPrefixUser(wksp_id) + userid + '.';
         },
         isValidPrefKey: function(pref_key){
             var regex = new RegExp(this.getPrefPrefixUser('').replace('.','\.') + '([0-9]+)\.project\.([0-9]+)', 'i');

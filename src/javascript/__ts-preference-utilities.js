@@ -112,7 +112,6 @@ Ext.define('Rally.technicalservices.util.PreferenceSaving',{
             pref = pref.substr(this.PREF_CHUNK_LEN);
         }
         pref_chunks.push(pref);
-        console.log('pref_chunks',pref_chunks);
         return pref_chunks;
     },
     _getObjectFromJSONChunks: function(json_chunks){
@@ -156,13 +155,11 @@ Ext.define('Rally.technicalservices.util.PreferenceSaving',{
                     } 
                 },this);
                 
-                console.log(json_chunks);
                 var objs = new Ext.util.HashMap();
                 json_chunks.each(function(key,value,length){
                     objs.add(key,this._getObjectFromJSONChunks(value));
                 },this);
-               // var obj = this._getObjectFromJSONChunks(json_chunks);
-                console.log(objs);
+
                 deferred.resolve([objs,last_updated]);
             },
             failure: function(error) {
